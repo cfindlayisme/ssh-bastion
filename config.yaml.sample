@@ -1,0 +1,23 @@
+# SSH Bastion server configuration
+# Copy this file to config.yaml and edit to match your environment.
+
+# Address to listen on (host:port or :port)
+listen_addr: ":2222"
+
+# Path to the host key file (generated automatically if missing)
+host_key_path: "host_key"
+
+# Authorized public key for bastion login (paste your id_ed25519.pub / id_rsa.pub contents)
+authorized_key: "ssh-ed25519 AAAA... user@host"
+
+# Target hosts available through the bastion
+targets:
+  - name: "Web Server"
+    host: "192.168.1.10"
+    port: "22"
+    user: "deploy"
+
+  - name: "Database Server"
+    host: "192.168.1.20"
+    port: "5432"
+    user: "admin"
