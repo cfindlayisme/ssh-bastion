@@ -7,42 +7,28 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/ssh"
+	"ssh-bastion/models/mocks"
 )
 
-func writeTestConfig(t *testing.T, content string) string {
+func writeMockConfig(t *testing.T, data []byte) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		t.Fatal(err)
 	}
 	return path
 }
 
-const validConfig = `
-listen_addr: ":2222"
-host_key_path: "host_key"
-authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
-targets:
-  - name: "Web Server"
-    host: "10.0.0.1"
-    port: "22"
-    user: "deploy"
-  - name: "Database Server"
-    host: "10.0.0.2"
-    port: "22"
-    user: "admin"
-`
-
 func TestLoad_Valid(t *testing.T) {
-	path := writeTestConfig(t, validConfig)
+	path := writeMockConfig(t, mocks.ValidConfig)
 	if err := Load(path); err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
 }
 
 func TestLoad_ListenAddrFormat(t *testing.T) {
-	path := writeTestConfig(t, validConfig)
+	path := writeMockConfig(t, mocks.ValidConfig)
 	if err := Load(path); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +38,7 @@ func TestLoad_ListenAddrFormat(t *testing.T) {
 }
 
 func TestLoad_AuthorizedKeyParseable(t *testing.T) {
-	path := writeTestConfig(t, validConfig)
+	path := writeMockConfig(t, mocks.ValidConfig)
 	if err := Load(path); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +49,7 @@ func TestLoad_AuthorizedKeyParseable(t *testing.T) {
 }
 
 func TestLoad_TargetsNotEmpty(t *testing.T) {
-	path := writeTestConfig(t, validConfig)
+	path := writeMockConfig(t, mocks.ValidConfig)
 	if err := Load(path); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +59,7 @@ func TestLoad_TargetsNotEmpty(t *testing.T) {
 }
 
 func TestLoad_TargetsHaveRequiredFields(t *testing.T) {
-	path := writeTestConfig(t, validConfig)
+	path := writeMockConfig(t, mocks.ValidConfig)
 	if err := Load(path); err != nil {
 		t.Fatal(err)
 	}
@@ -101,15 +87,7 @@ func TestLoad_MissingFile(t *testing.T) {
 }
 
 func TestLoad_MissingAuthorizedKey(t *testing.T) {
-	cfg := `
-listen_addr: ":2222"
-targets:
-  - name: "test"
-    host: "localhost"
-    port: "22"
-    user: "user"
-`
-	path := writeTestConfig(t, cfg)
+	path := writeMockConfig(t, mocks.MissingAuthorizedKey)
 	err := Load(path)
 	if err == nil {
 		t.Fatal("expected error for missing authorized_key")
@@ -117,11 +95,7 @@ targets:
 }
 
 func TestLoad_NoTargets(t *testing.T) {
-	cfg := `
-authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
-targets: []
-`
-	path := writeTestConfig(t, cfg)
+	path := writeMockConfig(t, mocks.NoTargets)
 	err := Load(path)
 	if err == nil {
 		t.Fatal("expected error for empty targets")
@@ -129,15 +103,7 @@ targets: []
 }
 
 func TestLoad_Defaults(t *testing.T) {
-	cfg := `
-authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
-targets:
-  - name: "test"
-    host: "localhost"
-    port: "22"
-    user: "user"
-`
-	path := writeTestConfig(t, cfg)
+	path := writeMockConfig(t, mocks.DefaultsOnly)
 	if err := Load(path); err != nil {
 		t.Fatal(err)
 	}
