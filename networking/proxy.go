@@ -12,9 +12,9 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-func ConnectToTarget(sshConn *ssh.ServerConn, channel ssh.Channel, inputCh <-chan []byte, target *models.Target, connectUser string, ptyWidth, ptyHeight int) error {
+func ConnectToTarget(sid string, sshConn *ssh.ServerConn, channel ssh.Channel, inputCh <-chan []byte, target *models.Target, connectUser string, ptyWidth, ptyHeight int) error {
 	// Open agent channel TO the client (server initiates this per SSH protocol)
-	log.Printf("[agent] Opening auth-agent channel to client")
+	log.Printf("[%s] Opening auth-agent channel to client", sid)
 	agentChan, agentReqs, err := sshConn.OpenChannel("auth-agent@openssh.com", nil)
 	if err != nil {
 		return fmt.Errorf("failed to open agent channel: %v", err)
@@ -23,7 +23,7 @@ func ConnectToTarget(sshConn *ssh.ServerConn, channel ssh.Channel, inputCh <-cha
 	go ssh.DiscardRequests(agentReqs)
 
 	ac := agent.NewClient(agentChan)
-	log.Printf("[agent] Agent client ready")
+	log.Printf("[%s] Agent client ready", sid)
 
 	fmt.Fprintf(channel, "\r\nConnecting to %s...\r\n", target.Name)
 
@@ -106,6 +106,6 @@ func ConnectToTarget(sshConn *ssh.ServerConn, channel ssh.Channel, inputCh <-cha
 	err = targetSession.Wait()
 	close(done)
 	wg.Wait()
-	log.Printf("Session to %s (%s) ended", target.Name, target.Addr())
+	log.Printf("[%s] Session to %s ended", sid, target.Name)
 	return err
 }
