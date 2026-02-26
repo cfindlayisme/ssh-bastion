@@ -11,6 +11,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const adminGroup = "admin"
+
 func ShowMenu(channel ssh.Channel, inputCh <-chan []byte, user *models.User) (*models.Target, string, bool) {
 	// Filter targets by user's groups
 	var targets []models.Target
@@ -20,7 +22,9 @@ func ShowMenu(channel ssh.Channel, inputCh <-chan []byte, user *models.User) (*m
 		}
 	}
 
-	if len(targets) == 0 {
+	isAdmin := user.InGroup(adminGroup)
+
+	if len(targets) == 0 && !isAdmin {
 		fmt.Fprintf(channel, "\r\n\033[1;31mNo targets available for your account.\033[0m\r\n")
 		return nil, "", false
 	}
@@ -37,6 +41,10 @@ func ShowMenu(channel ssh.Channel, inputCh <-chan []byte, user *models.User) (*m
 		fmt.Fprintf(channel, "  \033[1;33m%d)\033[0m %s\r\n", i+1, t.Name)
 	}
 
+	if isAdmin {
+		fmt.Fprintf(channel, "\r\n  \033[1;33mc)\033[0m Custom host\r\n")
+	}
+
 	fmt.Fprintf(channel, "\r\n  \033[1;33mq)\033[0m Quit\r\n")
 	fmt.Fprintf(channel, "\r\n\033[1m> \033[0m")
 
@@ -51,6 +59,9 @@ func ShowMenu(channel ssh.Channel, inputCh <-chan []byte, user *models.User) (*m
 			case b == 3: // Ctrl-C
 				fmt.Fprintf(channel, "\r\nGoodbye!\r\n")
 				return nil, "", false
+			case (b == 'c' || b == 'C') && isAdmin:
+				fmt.Fprintf(channel, "c\r\n")
+				return promptCustomHost(channel, inputCh, user)
 			case b == '\r' || b == '\n':
 				choice := strings.TrimSpace(input.String())
 				if choice == "" {
@@ -81,6 +92,74 @@ func ShowMenu(channel ssh.Channel, inputCh <-chan []byte, user *models.User) (*m
 		}
 	}
 	return nil, "", false
+}
+
+func promptCustomHost(channel ssh.Channel, inputCh <-chan []byte, user *models.User) (*models.Target, string, bool) {
+	// Prompt for host:port
+	fmt.Fprintf(channel, "\r\n  Enter host:port: ")
+	addr, ok := readLine(channel, inputCh)
+	if !ok {
+		return nil, "", false
+	}
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		fmt.Fprintf(channel, "\r\n  \033[1;31mNo address entered.\033[0m\r\n")
+		return nil, "", false
+	}
+
+	// Parse host and port, default to port 22 if not specified
+	host, port := addr, "22"
+	if i := strings.LastIndex(addr, ":"); i != -1 {
+		host = addr[:i]
+		port = addr[i+1:]
+	}
+
+	// Prompt for username
+	fmt.Fprintf(channel, "  Enter username [\033[1;32m%s\033[0m]: ", user.Name)
+	username, ok := readLine(channel, inputCh)
+	if !ok {
+		return nil, "", false
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		username = user.Name
+	}
+
+	target := &models.Target{
+		Name: host,
+		Host: host,
+		Port: port,
+	}
+	return target, username, true
+}
+
+func readLine(channel ssh.Channel, inputCh <-chan []byte) (string, bool) {
+	var input strings.Builder
+	for data := range inputCh {
+		for _, b := range data {
+			switch {
+			case b == 3: // Ctrl-C
+				fmt.Fprintf(channel, "\r\n")
+				return "", false
+			case b == '\r' || b == '\n':
+				fmt.Fprintf(channel, "\r\n")
+				return input.String(), true
+			case b == 127 || b == 8: // Backspace
+				s := input.String()
+				if len(s) > 0 {
+					input.Reset()
+					input.WriteString(s[:len(s)-1])
+					fmt.Fprintf(channel, "\b \b")
+				}
+			default:
+				if b >= 32 && b < 127 {
+					input.WriteByte(b)
+					fmt.Fprintf(channel, "%c", b)
+				}
+			}
+		}
+	}
+	return "", false
 }
 
 func promptUser(channel ssh.Channel, inputCh <-chan []byte, target *models.Target, user *models.User) (string, bool) {

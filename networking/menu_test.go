@@ -352,3 +352,116 @@ func TestShowMenu_Backspace(t *testing.T) {
 		t.Errorf("expected first target after backspace correction, got %+v", target)
 	}
 }
+
+// --- Admin custom host tests ---
+
+func TestShowMenu_AdminSeesCustomHostOption(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 1)
+	inputCh <- []byte("q")
+	close(inputCh)
+
+	ShowMenu(ch, inputCh, testAdminUser)
+
+	output := ch.writeBuffer.String()
+	if !strings.Contains(output, "Custom host") {
+		t.Error("admin user should see 'Custom host' option")
+	}
+}
+
+func TestShowMenu_NonAdminNoCustomHostOption(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 1)
+	inputCh <- []byte("q")
+	close(inputCh)
+
+	ShowMenu(ch, inputCh, testDevUser)
+
+	output := ch.writeBuffer.String()
+	if strings.Contains(output, "Custom host") {
+		t.Error("non-admin user should NOT see 'Custom host' option")
+	}
+}
+
+func TestShowMenu_CustomHostWithPort(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 4)
+	inputCh <- []byte("c")
+	inputCh <- []byte("example.com:2222\r")
+	inputCh <- []byte("root\r")
+	close(inputCh)
+
+	target, connectUser, ok := ShowMenu(ch, inputCh, testAdminUser)
+	if !ok {
+		t.Fatal("ShowMenu returned ok=false for custom host")
+	}
+	if target == nil {
+		t.Fatal("ShowMenu returned nil target for custom host")
+	}
+	if target.Host != "example.com" {
+		t.Errorf("target.Host = %q, want %q", target.Host, "example.com")
+	}
+	if target.Port != "2222" {
+		t.Errorf("target.Port = %q, want %q", target.Port, "2222")
+	}
+	if connectUser != "root" {
+		t.Errorf("connectUser = %q, want %q", connectUser, "root")
+	}
+}
+
+func TestShowMenu_CustomHostDefaultPort(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 4)
+	inputCh <- []byte("c")
+	inputCh <- []byte("example.com\r")
+	inputCh <- []byte("\r") // accept default username
+	close(inputCh)
+
+	target, connectUser, ok := ShowMenu(ch, inputCh, testAdminUser)
+	if !ok {
+		t.Fatal("ShowMenu returned ok=false for custom host")
+	}
+	if target == nil {
+		t.Fatal("ShowMenu returned nil target for custom host")
+	}
+	if target.Host != "example.com" {
+		t.Errorf("target.Host = %q, want %q", target.Host, "example.com")
+	}
+	if target.Port != "22" {
+		t.Errorf("target.Port = %q, want %q", target.Port, "22")
+	}
+	if connectUser != "admin" {
+		t.Errorf("connectUser = %q, want default %q", connectUser, "admin")
+	}
+}
+
+func TestShowMenu_CustomHostEmptyAddr(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 3)
+	inputCh <- []byte("c")
+	inputCh <- []byte("\r") // empty address
+	close(inputCh)
+
+	_, _, ok := ShowMenu(ch, inputCh, testAdminUser)
+	if ok {
+		t.Error("ShowMenu should return ok=false for empty custom host address")
+	}
+
+	output := ch.writeBuffer.String()
+	if !strings.Contains(output, "No address entered") {
+		t.Error("output missing 'No address entered' message")
+	}
+}
+
+func TestShowMenu_NonAdminCKeyIgnored(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 2)
+	inputCh <- []byte("c") // should be ignored for non-admin
+	inputCh <- []byte("q")
+	close(inputCh)
+
+	_, _, ok := ShowMenu(ch, inputCh, testDevUser)
+	if ok {
+		t.Error("ShowMenu should return ok=false when non-admin presses c then q")
+	}
+}

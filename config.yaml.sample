@@ -9,6 +9,8 @@ host_key_path: "host_key"
 
 # Users authorized to connect to the bastion (identified by SSH public key)
 # The "name" becomes the default username when connecting to targets.
+# Special group: "admin" — users in this group get a "Custom host" menu
+# option to connect to any host:port, not just configured targets.
 users:
   - name: "deploy"
     key: "ssh-ed25519 AAAA... user@host"
