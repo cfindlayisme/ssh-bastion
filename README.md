@@ -1,6 +1,6 @@
 # ssh-bastion
 
-A simple SSH bastion/jumpbox with user access control. Authenticates users by SSH key, assigns them to groups, and restricts which targets they can reach. Stores no auth information in itself.
+A simple SSH bastion/jumpbox with user access control. Authenticates users by SSH key, assigns them to groups, and restricts which targets they can reach. Stores no auth information in itself, and simple requires agentic forwarding of your ssh key to use.
 
 ## Build & Run
 
