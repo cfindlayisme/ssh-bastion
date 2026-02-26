@@ -1,2 +1,6 @@
-authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
+users:
+  - name: "user"
+    key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
+    groups:
+      - "admin"
 targets: []

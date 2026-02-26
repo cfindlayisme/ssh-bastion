@@ -1,12 +1,23 @@
 listen_addr: ":2222"
 host_key_path: "host_key"
-authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
+users:
+  - name: "deploy"
+    key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
+    groups:
+      - "admin"
+  - name: "alice"
+    key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJf5p5PGmOYhJQ8mczMb+8aPJGlOaRnsn+JAm+CUVQ3G alice@example.com"
+    groups:
+      - "dev"
 targets:
   - name: "Web Server"
     host: "10.0.0.1"
     port: "22"
-    user: "deploy"
+    allow_groups:
+      - "admin"
   - name: "Database Server"
     host: "10.0.0.2"
     port: "22"
-    user: "admin"
+    allow_groups:
+      - "admin"
+      - "dev"

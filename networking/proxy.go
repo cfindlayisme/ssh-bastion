@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-func ConnectToTarget(sshConn *ssh.ServerConn, channel ssh.Channel, inputCh <-chan []byte, target *models.Target, ptyWidth, ptyHeight int) error {
+func ConnectToTarget(sshConn *ssh.ServerConn, channel ssh.Channel, inputCh <-chan []byte, target *models.Target, connectUser string, ptyWidth, ptyHeight int) error {
 	// Open agent channel TO the client (server initiates this per SSH protocol)
 	log.Printf("[agent] Opening auth-agent channel to client")
 	agentChan, agentReqs, err := sshConn.OpenChannel("auth-agent@openssh.com", nil)
@@ -25,10 +25,10 @@ func ConnectToTarget(sshConn *ssh.ServerConn, channel ssh.Channel, inputCh <-cha
 	ac := agent.NewClient(agentChan)
 	log.Printf("[agent] Agent client ready")
 
-	fmt.Fprintf(channel, "\r\nConnecting to %s (%s@%s)...\r\n", target.Name, target.User, target.Addr())
+	fmt.Fprintf(channel, "\r\nConnecting to %s...\r\n", target.Name)
 
 	targetConfig := &ssh.ClientConfig{
-		User: target.User,
+		User: connectUser,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeysCallback(ac.Signers),
 		},

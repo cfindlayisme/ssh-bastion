@@ -5,6 +5,9 @@ import (
 	"log"
 	"net"
 
+	"ssh-bastion/config"
+	"ssh-bastion/models"
+
 	"golang.org/x/crypto/ssh"
 )
 
@@ -106,14 +109,28 @@ func handleSession(sshConn *ssh.ServerConn, newChan ssh.NewChannel) {
 		}
 	}()
 
+	// Look up the bastion user from permissions
+	bastionUsername := sshConn.Permissions.Extensions["bastion_user"]
+	var bastionUser *models.User
+	for i := range config.Cfg.Users {
+		if config.Cfg.Users[i].Name == bastionUsername {
+			bastionUser = &config.Cfg.Users[i]
+			break
+		}
+	}
+	if bastionUser == nil {
+		fmt.Fprintf(channel, "\r\nError: unknown bastion user.\r\n")
+		return
+	}
+
 	// Menu loop — returns to menu when target connection ends
 	for {
-		target, ok := ShowMenu(channel, inputCh)
+		target, connectUser, ok := ShowMenu(channel, inputCh, bastionUser)
 		if !ok {
 			return
 		}
 
-		err := ConnectToTarget(sshConn, channel, inputCh, target, ptyWidth, ptyHeight)
+		err := ConnectToTarget(sshConn, channel, inputCh, target, connectUser, ptyWidth, ptyHeight)
 		if err != nil {
 			fmt.Fprintf(channel, "\r\n\033[1;31mSession ended: %v\033[0m\r\n", err)
 		} else {

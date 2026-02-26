@@ -3,4 +3,5 @@ targets:
   - name: "test"
     host: "localhost"
     port: "22"
-    user: "user"
+    allow_groups:
+      - "admin"

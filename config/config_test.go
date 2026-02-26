@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/crypto/ssh"
 	"ssh-bastion/models/mocks"
 )
 
@@ -37,14 +36,31 @@ func TestLoad_ListenAddrFormat(t *testing.T) {
 	}
 }
 
-func TestLoad_AuthorizedKeyParseable(t *testing.T) {
+func TestLoad_UsersNotEmpty(t *testing.T) {
 	path := writeMockConfig(t, mocks.ValidConfig)
 	if err := Load(path); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, _, err := ssh.ParseAuthorizedKey([]byte(Cfg.AuthorizedKey))
-	if err != nil {
-		t.Fatalf("AuthorizedKey is not a valid SSH public key: %v", err)
+	if len(Cfg.Users) == 0 {
+		t.Fatal("Users list is empty")
+	}
+}
+
+func TestLoad_UsersHaveRequiredFields(t *testing.T) {
+	path := writeMockConfig(t, mocks.ValidConfig)
+	if err := Load(path); err != nil {
+		t.Fatal(err)
+	}
+	for i, u := range Cfg.Users {
+		if u.Name == "" {
+			t.Errorf("Users[%d] has empty Name", i)
+		}
+		if u.Key == "" {
+			t.Errorf("Users[%d] (%s) has empty Key", i, u.Name)
+		}
+		if len(u.Groups) == 0 {
+			t.Errorf("Users[%d] (%s) has no groups", i, u.Name)
+		}
 	}
 }
 
@@ -73,8 +89,8 @@ func TestLoad_TargetsHaveRequiredFields(t *testing.T) {
 		if tgt.Port == "" {
 			t.Errorf("Targets[%d] (%s) has empty Port", i, tgt.Name)
 		}
-		if tgt.User == "" {
-			t.Errorf("Targets[%d] (%s) has empty User", i, tgt.Name)
+		if len(tgt.AllowGroups) == 0 {
+			t.Errorf("Targets[%d] (%s) has no allow_groups", i, tgt.Name)
 		}
 	}
 }
@@ -86,11 +102,11 @@ func TestLoad_MissingFile(t *testing.T) {
 	}
 }
 
-func TestLoad_MissingAuthorizedKey(t *testing.T) {
-	path := writeMockConfig(t, mocks.MissingAuthorizedKey)
+func TestLoad_MissingUsers(t *testing.T) {
+	path := writeMockConfig(t, mocks.MissingUsers)
 	err := Load(path)
 	if err == nil {
-		t.Fatal("expected error for missing authorized_key")
+		t.Fatal("expected error for missing users")
 	}
 }
 

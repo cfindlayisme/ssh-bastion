@@ -18,9 +18,17 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	authorizedKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(config.Cfg.AuthorizedKey))
-	if err != nil {
-		log.Fatalf("Failed to parse authorized key: %v", err)
+	type parsedUser struct {
+		name      string
+		publicKey ssh.PublicKey
+	}
+	var authorizedUsers []parsedUser
+	for _, u := range config.Cfg.Users {
+		pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(u.Key))
+		if err != nil {
+			log.Fatalf("Failed to parse key for user %s: %v", u.Name, err)
+		}
+		authorizedUsers = append(authorizedUsers, parsedUser{name: u.Name, publicKey: pub})
 	}
 
 	hostKey, err := crypto.LoadOrGenerateHostKey(config.Cfg.HostKeyPath)
@@ -30,11 +38,17 @@ func main() {
 
 	sshConfig := &ssh.ServerConfig{
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			if bytes.Equal(key.Marshal(), authorizedKey.Marshal()) {
-				log.Printf("Accepted public key for %s from %s", conn.User(), conn.RemoteAddr())
-				return &ssh.Permissions{}, nil
+			for _, u := range authorizedUsers {
+				if bytes.Equal(key.Marshal(), u.publicKey.Marshal()) {
+					log.Printf("Accepted public key for bastion user %s from %s", u.name, conn.RemoteAddr())
+					return &ssh.Permissions{
+						Extensions: map[string]string{
+							"bastion_user": u.name,
+						},
+					}, nil
+				}
 			}
-			return nil, fmt.Errorf("unknown public key for %s", conn.User())
+			return nil, fmt.Errorf("unknown public key from %s", conn.RemoteAddr())
 		},
 	}
 	sshConfig.AddHostKey(hostKey)

@@ -1,4 +1,6 @@
 # ssh-bastion
-Quick and easy project to have a more "automated" jumpbox for myself. Not designed or planned for it to be able to see any of the data transmitted through it.
+Quick and easy project to have a more "automated" jumpbox for myself.
+
+Meant to be put as a boundary bastion. Ie, to get inside a network remotely for just ssh without having to fire up a whole VPN setup.
 
 In development still - not ready for public use.

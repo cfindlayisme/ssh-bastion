@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"ssh-bastion/config"
+	"ssh-bastion/models"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -20,15 +21,25 @@ type mockChannel struct {
 }
 
 func (m *mockChannel) Read(data []byte) (int, error)  { return 0, m.readErr }
-func (m *mockChannel) Write(data []byte) (int, error)  { return m.writeBuffer.Write(data) }
-func (m *mockChannel) Close() error                     { return nil }
-func (m *mockChannel) CloseWrite() error                { return nil }
-func (m *mockChannel) Stderr() io.ReadWriter            { return &bytes.Buffer{} }
+func (m *mockChannel) Write(data []byte) (int, error) { return m.writeBuffer.Write(data) }
+func (m *mockChannel) Close() error                   { return nil }
+func (m *mockChannel) CloseWrite() error              { return nil }
+func (m *mockChannel) Stderr() io.ReadWriter          { return &bytes.Buffer{} }
 func (m *mockChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }
 
 var _ ssh.Channel = (*mockChannel)(nil)
+
+var testAdminUser = &models.User{
+	Name:   "admin",
+	Groups: []string{"admin"},
+}
+
+var testDevUser = &models.User{
+	Name:   "dev",
+	Groups: []string{"dev"},
+}
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "menu-test")
@@ -40,20 +51,32 @@ func TestMain(m *testing.M) {
 	cfg := `
 listen_addr: ":2222"
 host_key_path: "host_key"
-authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
+users:
+  - name: "admin"
+    key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC85vp8YRG/as/vh3Aoax3D1ObkqwGUKnVWofMdbfeN6 test@example.com"
+    groups:
+      - "admin"
+  - name: "dev"
+    key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJf5p5PGmOYhJQ8mczMb+8aPJGlOaRnsn+JAm+CUVQ3G dev@example.com"
+    groups:
+      - "dev"
 targets:
   - name: "Web Server"
     host: "10.0.0.1"
     port: "22"
-    user: "deploy"
+    allow_groups:
+      - "admin"
   - name: "Database Server"
     host: "10.0.0.2"
     port: "22"
-    user: "admin"
+    allow_groups:
+      - "admin"
+      - "dev"
   - name: "App Server"
     host: "10.0.0.3"
     port: "22"
-    user: "app"
+    allow_groups:
+      - "admin"
 `
 	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, []byte(cfg), 0644); err != nil {
@@ -68,21 +91,22 @@ targets:
 // --- resolveTarget tests ---
 
 func TestResolveTarget_ByIndex(t *testing.T) {
+	targets := config.Cfg.Targets
 	tests := []struct {
 		input    string
 		wantName string
 		wantNil  bool
 	}{
-		{"1", config.Cfg.Targets[0].Name, false},
-		{"2", config.Cfg.Targets[1].Name, false},
-		{"3", config.Cfg.Targets[2].Name, false},
+		{"1", targets[0].Name, false},
+		{"2", targets[1].Name, false},
+		{"3", targets[2].Name, false},
 		{"0", "", true},
 		{"-1", "", true},
 		{"99", "", true},
 	}
 	for _, tt := range tests {
 		t.Run("index_"+tt.input, func(t *testing.T) {
-			got := resolveTarget(tt.input)
+			got := resolveTarget(tt.input, targets)
 			if tt.wantNil {
 				if got != nil {
 					t.Errorf("resolveTarget(%q) = %+v, want nil", tt.input, got)
@@ -100,15 +124,14 @@ func TestResolveTarget_ByIndex(t *testing.T) {
 }
 
 func TestResolveTarget_ByName(t *testing.T) {
-	for _, tgt := range config.Cfg.Targets {
+	targets := config.Cfg.Targets
+	for _, tgt := range targets {
 		t.Run("name_"+tgt.Name, func(t *testing.T) {
-			// Exact name
-			got := resolveTarget(tgt.Name)
+			got := resolveTarget(tgt.Name, targets)
 			if got == nil || got.Name != tgt.Name {
 				t.Errorf("resolveTarget(%q) did not match", tgt.Name)
 			}
-			// Case-insensitive
-			got = resolveTarget(strings.ToUpper(tgt.Name))
+			got = resolveTarget(strings.ToUpper(tgt.Name), targets)
 			if got == nil || got.Name != tgt.Name {
 				t.Errorf("resolveTarget(%q) case-insensitive did not match", strings.ToUpper(tgt.Name))
 			}
@@ -117,9 +140,10 @@ func TestResolveTarget_ByName(t *testing.T) {
 }
 
 func TestResolveTarget_ByHost(t *testing.T) {
-	for _, tgt := range config.Cfg.Targets {
+	targets := config.Cfg.Targets
+	for _, tgt := range targets {
 		t.Run("host_"+tgt.Host, func(t *testing.T) {
-			got := resolveTarget(tgt.Host)
+			got := resolveTarget(tgt.Host, targets)
 			if got == nil || got.Host != tgt.Host {
 				t.Errorf("resolveTarget(%q) did not match by host", tgt.Host)
 			}
@@ -128,10 +152,11 @@ func TestResolveTarget_ByHost(t *testing.T) {
 }
 
 func TestResolveTarget_Invalid(t *testing.T) {
+	targets := config.Cfg.Targets
 	invalids := []string{"", "nonexistent", "999", "abc123"}
 	for _, input := range invalids {
 		t.Run(input, func(t *testing.T) {
-			if got := resolveTarget(input); got != nil {
+			if got := resolveTarget(input, targets); got != nil {
 				t.Errorf("resolveTarget(%q) = %+v, want nil", input, got)
 			}
 		})
@@ -146,7 +171,7 @@ func TestShowMenu_Quit(t *testing.T) {
 	inputCh <- []byte("q")
 	close(inputCh)
 
-	target, ok := ShowMenu(ch, inputCh)
+	target, _, ok := ShowMenu(ch, inputCh, testAdminUser)
 	if ok {
 		t.Error("ShowMenu returned ok=true for quit")
 	}
@@ -166,7 +191,7 @@ func TestShowMenu_CtrlC(t *testing.T) {
 	inputCh <- []byte{3} // Ctrl-C
 	close(inputCh)
 
-	target, ok := ShowMenu(ch, inputCh)
+	target, _, ok := ShowMenu(ch, inputCh, testAdminUser)
 	if ok {
 		t.Error("ShowMenu returned ok=true for Ctrl-C")
 	}
@@ -177,12 +202,13 @@ func TestShowMenu_CtrlC(t *testing.T) {
 
 func TestShowMenu_ValidSelection(t *testing.T) {
 	ch := &mockChannel{}
-	inputCh := make(chan []byte, 2)
+	inputCh := make(chan []byte, 4)
 	inputCh <- []byte("1")
 	inputCh <- []byte("\r")
+	inputCh <- []byte("\r") // accept default user
 	close(inputCh)
 
-	target, ok := ShowMenu(ch, inputCh)
+	target, connectUser, ok := ShowMenu(ch, inputCh, testAdminUser)
 	if !ok {
 		t.Fatal("ShowMenu returned ok=false for valid selection")
 	}
@@ -192,18 +218,22 @@ func TestShowMenu_ValidSelection(t *testing.T) {
 	if target.Name != config.Cfg.Targets[0].Name {
 		t.Errorf("selected target = %q, want %q", target.Name, config.Cfg.Targets[0].Name)
 	}
+	if connectUser != "admin" {
+		t.Errorf("connectUser = %q, want %q", connectUser, "admin")
+	}
 }
 
 func TestShowMenu_InvalidThenValid(t *testing.T) {
 	ch := &mockChannel{}
-	inputCh := make(chan []byte, 4)
+	inputCh := make(chan []byte, 6)
 	inputCh <- []byte("9")
 	inputCh <- []byte("\r") // invalid selection
 	inputCh <- []byte("1")
 	inputCh <- []byte("\r") // valid selection
+	inputCh <- []byte("\r") // accept default user
 	close(inputCh)
 
-	target, ok := ShowMenu(ch, inputCh)
+	target, _, ok := ShowMenu(ch, inputCh, testAdminUser)
 	if !ok {
 		t.Fatal("ShowMenu returned ok=false")
 	}
@@ -222,7 +252,7 @@ func TestShowMenu_ChannelClosed(t *testing.T) {
 	inputCh := make(chan []byte)
 	close(inputCh) // immediate close
 
-	target, ok := ShowMenu(ch, inputCh)
+	target, _, ok := ShowMenu(ch, inputCh, testAdminUser)
 	if ok {
 		t.Error("ShowMenu returned ok=true for closed channel")
 	}
@@ -231,15 +261,16 @@ func TestShowMenu_ChannelClosed(t *testing.T) {
 	}
 }
 
-func TestShowMenu_RendersAllTargets(t *testing.T) {
+func TestShowMenu_RendersAllowedTargets(t *testing.T) {
 	ch := &mockChannel{}
 	inputCh := make(chan []byte, 1)
 	inputCh <- []byte("q")
 	close(inputCh)
 
-	ShowMenu(ch, inputCh)
+	ShowMenu(ch, inputCh, testAdminUser)
 
 	output := ch.writeBuffer.String()
+	// Admin should see all 3 targets
 	for _, tgt := range config.Cfg.Targets {
 		if !strings.Contains(output, tgt.Name) {
 			t.Errorf("menu output missing target name %q", tgt.Name)
@@ -250,16 +281,70 @@ func TestShowMenu_RendersAllTargets(t *testing.T) {
 	}
 }
 
-func TestShowMenu_Backspace(t *testing.T) {
+func TestShowMenu_FiltersTargetsByGroup(t *testing.T) {
 	ch := &mockChannel{}
-	inputCh := make(chan []byte, 5)
-	inputCh <- []byte("9")       // type '9'
-	inputCh <- []byte{127}       // backspace
-	inputCh <- []byte("1")       // type '1'
-	inputCh <- []byte("\r")      // enter
+	inputCh := make(chan []byte, 1)
+	inputCh <- []byte("q")
 	close(inputCh)
 
-	target, ok := ShowMenu(ch, inputCh)
+	// Dev user should only see "Database Server" (allow_groups includes "dev")
+	ShowMenu(ch, inputCh, testDevUser)
+
+	output := ch.writeBuffer.String()
+	if !strings.Contains(output, "Database Server") {
+		t.Error("dev user should see Database Server")
+	}
+	if strings.Contains(output, "Web Server") {
+		t.Error("dev user should NOT see Web Server")
+	}
+	if strings.Contains(output, "App Server") {
+		t.Error("dev user should NOT see App Server")
+	}
+}
+
+func TestShowMenu_WelcomeMessage(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 1)
+	inputCh <- []byte("q")
+	close(inputCh)
+
+	ShowMenu(ch, inputCh, testAdminUser)
+
+	output := ch.writeBuffer.String()
+	if !strings.Contains(output, "admin") {
+		t.Error("menu output missing user name in welcome")
+	}
+}
+
+func TestShowMenu_CustomUsername(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 4)
+	inputCh <- []byte("1")
+	inputCh <- []byte("\r")
+	inputCh <- []byte("root")
+	inputCh <- []byte("\r")
+	close(inputCh)
+
+	_, connectUser, ok := ShowMenu(ch, inputCh, testAdminUser)
+	if !ok {
+		t.Fatal("ShowMenu returned ok=false")
+	}
+	if connectUser != "root" {
+		t.Errorf("connectUser = %q, want %q", connectUser, "root")
+	}
+}
+
+func TestShowMenu_Backspace(t *testing.T) {
+	ch := &mockChannel{}
+	inputCh := make(chan []byte, 6)
+	inputCh <- []byte("9")  // type '9'
+	inputCh <- []byte{127}  // backspace
+	inputCh <- []byte("1")  // type '1'
+	inputCh <- []byte("\r") // enter
+	inputCh <- []byte("\r") // accept default user
+	close(inputCh)
+
+	target, _, ok := ShowMenu(ch, inputCh, testAdminUser)
 	if !ok {
 		t.Fatal("ShowMenu returned ok=false")
 	}

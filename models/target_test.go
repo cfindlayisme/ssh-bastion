@@ -39,3 +39,32 @@ func TestTargetAddr(t *testing.T) {
 		})
 	}
 }
+
+func TestAllowedByGroups(t *testing.T) {
+	target := Target{
+		Name:        "test",
+		AllowGroups: []string{"admin", "dev"},
+	}
+
+	tests := []struct {
+		name       string
+		userGroups []string
+		want       bool
+	}{
+		{"matching group", []string{"admin"}, true},
+		{"second matching group", []string{"dev"}, true},
+		{"multiple groups one matches", []string{"ops", "dev"}, true},
+		{"no matching group", []string{"ops", "qa"}, false},
+		{"empty user groups", []string{}, false},
+		{"nil user groups", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := target.AllowedByGroups(tt.userGroups)
+			if got != tt.want {
+				t.Errorf("AllowedByGroups(%v) = %v, want %v", tt.userGroups, got, tt.want)
+			}
+		})
+	}
+}
